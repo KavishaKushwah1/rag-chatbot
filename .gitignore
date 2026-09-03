@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.streamlit/secrets.toml
+qdrant_storage/
+*.db
+.DS_Store
+.ragas_cache/
+langfuse_cache/
