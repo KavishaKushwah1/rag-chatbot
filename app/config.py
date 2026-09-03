@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
 
-    groq_api_key: str | None = None
+    gemini_api_key: str | None = None
 
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
