@@ -1,13 +1,20 @@
 """
-Thin wrapper around Qdrant for creating the collection and upserting
-chunks with metadata (permission tags live here — this is what Phase 4's
-ACL filtering will query against).
+Thin wrapper around Qdrant. Collection stores TWO vectors per point:
+  - "dense": semantic embedding (384-dim, cosine)
+  - "sparse": BM25-style sparse embedding (keyword matching)
+Both are queried together in Phase 2's hybrid search.
 """
 from __future__ import annotations
 import uuid
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance,
+    VectorParams,
+    SparseVectorParams,
+    SparseVector,
+    PointStruct,
+)
 
 from app.config import settings
 
@@ -19,24 +26,41 @@ def get_client() -> QdrantClient:
     return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
 
 
-def ensure_collection(client: QdrantClient) -> None:
-    existing = [c.name for c in client.get_collections().collections]
-    if COLLECTION_NAME in existing:
-        return
+def recreate_collection(client: QdrantClient) -> None:
+    """Drops and recreates the collection with dense + sparse vector support."""
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
+
     client.create_collection(
         collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+        vectors_config={
+            "dense": VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
+        },
+        sparse_vectors_config={
+            "sparse": SparseVectorParams(),
+        },
     )
 
 
-def upsert_chunks(client: QdrantClient, chunks_with_vectors: list[tuple]) -> None:
-    """chunks_with_vectors: list of (Chunk, embedding_vector) tuples"""
+def ensure_collection(client: QdrantClient) -> None:
+    if not client.collection_exists(COLLECTION_NAME):
+        recreate_collection(client)
+
+
+def upsert_chunks(client: QdrantClient, rows: list[tuple]) -> None:
+    """rows: list of (Chunk, dense_vector, sparse_embedding) tuples"""
     points = []
-    for chunk, vector in chunks_with_vectors:
+    for chunk, dense_vector, sparse_embedding in rows:
         points.append(
             PointStruct(
                 id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
-                vector=vector,
+                vector={
+                    "dense": dense_vector,
+                    "sparse": SparseVector(
+                        indices=sparse_embedding.indices.tolist(),
+                        values=sparse_embedding.values.tolist(),
+                    ),
+                },
                 payload={
                     "chunk_id": chunk.chunk_id,
                     "doc_id": chunk.doc_id,
