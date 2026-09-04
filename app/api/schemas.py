@@ -3,8 +3,8 @@ from pydantic import BaseModel
 
 class ChatRequest(BaseModel):
     query: str
-    permissions: list[str] | None = None  # wired to real auth in Phase 4
     top_k: int = 5
+    # permissions removed — now derived server-side from the authenticated user
 
 
 class SourceOut(BaseModel):
