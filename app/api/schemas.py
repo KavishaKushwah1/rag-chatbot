@@ -4,7 +4,7 @@ from pydantic import BaseModel
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
-    # permissions removed — now derived server-side from the authenticated user
+    session_id: str | None = None  # if omitted, server creates a new session
 
 
 class SourceOut(BaseModel):

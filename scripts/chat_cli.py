@@ -1,6 +1,7 @@
 """
-Usage: python scripts\chat_cli.py "question" --token <access_token>
-Get a token first via scripts\login.py
+Usage:
+  python scripts\chat_cli.py "question" --token <access_token>
+  python scripts\chat_cli.py "follow-up" --token <access_token> --session <session_id from previous reply>
 """
 import argparse
 import json
@@ -10,10 +11,11 @@ import httpx
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("query", type=str)
-    parser.add_argument("--token", required=True, help="Supabase access token from scripts/login.py")
+    parser.add_argument("--token", required=True)
+    parser.add_argument("--session", default=None, help="Reuse a session_id to keep short-term memory")
     args = parser.parse_args()
 
-    payload = {"query": args.query}
+    payload = {"query": args.query, "session_id": args.session}
     headers = {"Authorization": f"Bearer {args.token}"}
     current_event = None
 
@@ -30,7 +32,10 @@ def main():
                 continue
             if line.startswith("data:"):
                 data = line.split(":", 1)[1].strip()
-                if current_event == "sources":
+                if current_event == "session":
+                    session_id = json.loads(data)["session_id"]
+                    print(f"[session_id: {session_id}]")
+                elif current_event == "sources":
                     sources = json.loads(data)
                     if sources:
                         print("Sources:", [s["source"] for s in sources])
