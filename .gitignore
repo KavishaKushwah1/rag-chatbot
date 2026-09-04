@@ -8,3 +8,6 @@ qdrant_storage/
 .DS_Store
 .ragas_cache/
 langfuse_cache/
+
+frontend/
+.streamlit/secrets.toml
