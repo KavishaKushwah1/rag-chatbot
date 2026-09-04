@@ -19,12 +19,14 @@ from app.llm.gemini_client import stream_completion
 from app.memory.short_term import ensure_session, get_recent_messages, save_message
 from app.memory.long_term import retrieve_memories
 from app.memory.extractor import extract_and_store_memories
+from app.guardrails.input_guard import validate_query
+from app.guardrails.sanitizer import sanitize_chunks
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
 
-MIN_RELEVANCE_SCORE = -2.0
-
+MIN_RELEVANCE_SCORE = settings.min_relevance_score
 
 @router.post("/chat")
 async def chat(
@@ -39,17 +41,19 @@ async def chat(
 
     async def event_generator():
         try:
+            query = validate_query(request.query)
             yield {"event": "session", "data": json.dumps({"session_id": session_id})}
 
             history = get_recent_messages(session_id)
-            memories = retrieve_memories(current_user.user_id, request.query)
+            memories = retrieve_memories(current_user.user_id, query)
 
             results = hybrid_search(
-                query=request.query,
+                query=query,
                 top_k_final=request.top_k,
                 permission_filter=current_user.permissions,
             )
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
+            strong_results = sanitize_chunks(strong_results)
 
             # Only give up entirely if there's no KB match AND no conversational
             # context (history/memory) to fall back on. A memory-only question

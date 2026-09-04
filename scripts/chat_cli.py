@@ -1,7 +1,7 @@
 """
 Usage:
-  python scripts\chat_cli.py "question" --token <access_token>
-  python scripts\chat_cli.py "follow-up" --token <access_token> --session <session_id from previous reply>
+  python -m scripts.chat_cli "question" --token <access_token>
+  python -m scripts.chat_cli "follow-up" --token <access_token> --session <session_id from previous reply>
 """
 import argparse
 import json
