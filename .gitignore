@@ -9,5 +9,6 @@ qdrant_storage/
 .ragas_cache/
 langfuse_cache/
 
-frontend/
-.streamlit/secrets.toml
+frontend/.env
+frontend/node_modules/
+frontend/dist/

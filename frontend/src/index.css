@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #FAFAF9; --surface: #F3F1EC; --surface-border: #E6E3DC;
+  --text: #23252A; --muted: #7A7F8C; --accent: #5B6B8C;
+  --accent-soft: #EEF0F4; --accent-soft-border: #DBDEE8;
+  --input-bg: #FFFFFF; --user-bubble-bg: #3F4654; --user-bubble-text: #F5F5F3;
+  --avatar-bg: #5B6B8C;
+  --warning-bg: #FFF7E6; --warning-border: #F0C36D; --warning-text: #8A5A00;
+}
+.dark {
+  --bg: #14161B; --surface: #1B1E25; --surface-border: #2A2E38;
+  --text: #DDDEE3; --muted: #8B909C; --accent: #8890AC;
+  --accent-soft: #232733; --accent-soft-border: #333850;
+  --input-bg: #1B1E25; --user-bubble-bg: #565F78; --user-bubble-text: #F2F2F5;
+  --avatar-bg: #565F78;
+  --warning-bg: #2E2510; --warning-border: #6B5525; --warning-text: #E8C16B;
+}
+
+body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); }
+.font-mono-plex { font-family: 'IBM Plex Mono', monospace; }
