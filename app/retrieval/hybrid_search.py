@@ -20,7 +20,8 @@ def hybrid_search(
     top_k_candidates: int = 20,
     top_k_final: int = 5,
     permission_filter: list[str] | None = None,
-) -> list[dict]:
+    return_debug: bool = False,
+):
     from app.retrieval.reranker import rerank  # local import avoids loading reranker on ingest
 
     client = get_client()
@@ -37,27 +38,20 @@ def hybrid_search(
     results = client.query_points(
         collection_name=COLLECTION_NAME,
         prefetch=[
-            models.Prefetch(
-                query=dense_vector,
-                using="dense",
-                limit=top_k_candidates,
-                filter=qdrant_filter,
-            ),
+            models.Prefetch(query=dense_vector, using="dense", limit=top_k_candidates, filter=qdrant_filter),
             models.Prefetch(
                 query=models.SparseVector(
                     indices=sparse_embedding.indices.tolist(),
                     values=sparse_embedding.values.tolist(),
                 ),
-                using="sparse",
-                limit=top_k_candidates,
-                filter=qdrant_filter,
+                using="sparse", limit=top_k_candidates, filter=qdrant_filter,
             ),
         ],
         query=models.FusionQuery(fusion=models.Fusion.RRF),
         limit=top_k_candidates,
     )
 
-    candidates = [
+    fusion_candidates = [
         {
             "chunk_id": point.payload["chunk_id"],
             "doc_id": point.payload["doc_id"],
@@ -69,4 +63,8 @@ def hybrid_search(
         for point in results.points
     ]
 
-    return rerank(query, candidates, top_k=top_k_final)
+    reranked = rerank(query, list(fusion_candidates), top_k=top_k_final)
+
+    if return_debug:
+        return {"fusion_candidates": fusion_candidates, "reranked": reranked}
+    return reranked

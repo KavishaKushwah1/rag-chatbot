@@ -22,6 +22,7 @@ from app.memory.extractor import extract_and_store_memories
 from app.guardrails.input_guard import validate_query
 from app.guardrails.sanitizer import sanitize_chunks
 from app.config import settings
+from app.observability.langfuse_client import is_enabled, get_langfuse
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -40,6 +41,18 @@ async def chat(
     full_reply_parts: list[str] = []
 
     async def event_generator():
+        langfuse = get_langfuse() if is_enabled() else None
+        root_ctx = (
+            langfuse.start_as_current_observation(
+                as_type="span",
+                name="chat_request",
+                input=request.query,
+                metadata={"user_id": current_user.user_id, "session_id": session_id, "department": current_user.department},
+            )
+            if langfuse else None
+        )
+        root_span = root_ctx.__enter__() if root_ctx else None
+
         try:
             query = validate_query(request.query)
             yield {"event": "session", "data": json.dumps({"session_id": session_id})}
@@ -47,23 +60,37 @@ async def chat(
             history = get_recent_messages(session_id)
             memories = retrieve_memories(current_user.user_id, query)
 
-            results = hybrid_search(
-                query=query,
-                top_k_final=request.top_k,
-                permission_filter=current_user.permissions,
-            )
+            if langfuse:
+                with langfuse.start_as_current_observation(
+                    as_type="span", name="retrieval", input={"query": query, "permissions": current_user.permissions}
+                ) as retrieval_span:
+                    debug = hybrid_search(
+                        query=query, top_k_final=request.top_k,
+                        permission_filter=current_user.permissions, return_debug=True,
+                    )
+                    results = debug["reranked"]
+                    retrieval_span.update(
+                        output={
+                            "fusion_candidate_count": len(debug["fusion_candidates"]),
+                            "reranked": [{"source": r["source"], "score": r["rerank_score"]} for r in results],
+                        }
+                    )
+            else:
+                results = hybrid_search(
+                    query=query, top_k_final=request.top_k, permission_filter=current_user.permissions,
+                )
+
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
             strong_results = sanitize_chunks(strong_results)
 
-            # Only give up entirely if there's no KB match AND no conversational
-            # context (history/memory) to fall back on. A memory-only question
-            # like "what's my name?" has no KB match but should still be answered.
             if not strong_results and not history and not memories:
                 fallback = "I don't have enough information to answer that."
                 yield {"event": "sources", "data": json.dumps([])}
                 yield {"event": "token", "data": fallback}
                 full_reply_parts.append(fallback)
                 yield {"event": "done", "data": ""}
+                if root_span:
+                    root_span.update(output=fallback)
                 return
 
             sources_payload = [
@@ -72,25 +99,41 @@ async def chat(
             ]
             yield {"event": "sources", "data": json.dumps(sources_payload)}
 
-            messages = build_messages(request.query, strong_results, history=history, memories=memories)
+            messages = build_messages(query, strong_results, history=history, memories=memories)
 
-            for token in stream_completion(messages):
-                full_reply_parts.append(token)
-                yield {"event": "token", "data": token}
+            if langfuse:
+                with langfuse.start_as_current_observation(
+                    as_type="generation", name="generation", model="gemini-3.6-flash", input=messages
+                ) as gen_span:
+                    for token in stream_completion(messages):
+                        full_reply_parts.append(token)
+                        yield {"event": "token", "data": token}
+                    gen_span.update(output="".join(full_reply_parts))
+            else:
+                for token in stream_completion(messages):
+                    full_reply_parts.append(token)
+                    yield {"event": "token", "data": token}
 
             yield {"event": "done", "data": ""}
+            if root_span:
+                root_span.update(output="".join(full_reply_parts))
 
         except Exception as e:
             logger.exception("Error during chat generation")
             yield {"event": "error", "data": json.dumps({"message": str(e)})}
+            if root_span:
+                root_span.update(level="ERROR", status_message=str(e))
 
         finally:
+            if root_ctx:
+                root_ctx.__exit__(None, None, None)
+            if langfuse:
+                langfuse.flush()
+
             full_reply = "".join(full_reply_parts)
             if full_reply:
-                save_message(session_id, current_user.user_id, "user", request.query)
+                save_message(session_id, current_user.user_id, "user", query)
                 save_message(session_id, current_user.user_id, "assistant", full_reply)
-                background_tasks.add_task(
-                    extract_and_store_memories, current_user.user_id, request.query, full_reply
-                )
+                background_tasks.add_task(extract_and_store_memories, current_user.user_id, query, full_reply)
 
     return EventSourceResponse(event_generator(), background=background_tasks)
