@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, ArrowRight, MoreHorizontal, Sun, Moon } from "lucide-react";
+import { Paperclip, ArrowRight, MoreHorizontal, Sun, Moon, X, FileIcon } from "lucide-react";
 import { fetchSessionMessages, renameSession, streamChat } from "../api";
 import Message from "./Message";
 import EmptyState from "./EmptyState";
@@ -22,7 +22,10 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   const [title, setTitle] = useState("Acme Knowledge Assistant");
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const bottomRef = useRef(null);
+  const headerMenuRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!sessionId) { setMessages([]); setTitle("Acme Knowledge Assistant"); return; }
@@ -32,6 +35,16 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   }, [sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streamingText]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
 
   async function handleSend() {
     const query = input.trim();
@@ -68,31 +81,52 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
     onSessionsChanged();
   }
 
+  function handleAttachClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFilesSelected(e) {
+    const files = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => [...prev, ...files]);
+    e.target.value = "";
+  }
+
+  function removeAttachedFile(index) {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen">
-      <div className="flex items-center justify-between px-6 py-4">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleTheme} className="p-2 rounded-lg border" style={{ borderColor: "var(--surface-border)" }}>
+      <div className="flex items-center justify-between px-7 py-5">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            className="p-2.5 rounded-xl border shadow-sm transition-colors hover:border-[var(--accent)]"
+            style={{ borderColor: "var(--surface-border)" }}
+          >
             {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
           </button>
           {sessionId && (
-            <div className="relative">
-              <button onClick={() => setMenuOpen((o) => !o)} className="p-2 rounded-lg border" style={{ borderColor: "var(--surface-border)" }}>
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                className="p-2.5 rounded-xl border shadow-sm transition-colors hover:border-[var(--accent)]"
+                style={{ borderColor: "var(--surface-border)" }}
+              >
                 <MoreHorizontal size={16} />
               </button>
               {menuOpen && (
-                <div className="absolute right-0 top-10 z-10 w-48 rounded-lg border p-1 text-sm"
+                <div className="absolute right-0 top-12 z-10 w-48 rounded-xl border shadow-md p-1.5 text-sm"
                   style={{ background: "var(--input-bg)", borderColor: "var(--surface-border)" }}>
                   <button
                     onClick={() => { const t = prompt("New title", title); if (t) handleRename(t); setMenuOpen(false); }}
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-[var(--accent-soft)]"
+                    className="w-full text-left px-2.5 py-2 rounded-lg transition-colors hover:bg-[var(--accent-soft)]"
                   >
                     Rename this chat
                   </button>
                   <button
                     onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}
-                    className="w-full text-left px-2 py-1.5 rounded text-red-500 hover:bg-red-50"
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-red-500 transition-colors hover:bg-red-50"
                   >
                     Delete this chat
                   </button>
@@ -118,12 +152,41 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
         <div ref={bottomRef} />
       </div>
 
-      <div className="px-6 pb-3 pt-2">
+      <div className="px-7 pb-4 pt-2">
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {attachedFiles.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs"
+                style={{ background: "var(--surface)", borderColor: "var(--surface-border)" }}
+              >
+                <FileIcon size={13} style={{ color: "var(--accent)" }} />
+                <span className="max-w-[160px] truncate">{f.name}</span>
+                <button onClick={() => removeAttachedFile(i)} className="ml-1">
+                  <X size={12} style={{ color: "var(--muted)" }} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.zip"
+          onChange={handleFilesSelected}
+          className="hidden"
+        />
+
         <div
-          className="flex items-center gap-2 rounded-xl border px-3 py-2 focus-within:ring-2"
+          className="flex items-center gap-2.5 rounded-2xl border px-4 py-3 shadow-sm transition-shadow focus-within:shadow-md focus-within:ring-2"
           style={{ background: "var(--input-bg)", borderColor: "var(--surface-border)" }}
         >
-          <Paperclip size={16} style={{ color: "var(--muted)" }} />
+          <button onClick={handleAttachClick} className="flex-shrink-0" title="Attach a file (.pdf, .doc, .docx, .zip)">
+            <Paperclip size={16} style={{ color: "var(--muted)" }} />
+          </button>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -131,11 +194,15 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
             placeholder="Ask about HR policy, engineering docs, or pricing…"
             className="flex-1 bg-transparent outline-none text-sm"
           />
-          <button onClick={handleSend} className="p-1.5 rounded-full text-white" style={{ background: "var(--accent)" }}>
+          <button
+            onClick={handleSend}
+            className="p-2 rounded-full text-white transition-transform hover:scale-105"
+            style={{ background: "var(--accent)" }}
+          >
             <ArrowRight size={16} />
           </button>
         </div>
-        <div className="text-center text-xs mt-2" style={{ color: "var(--muted)" }}>
+        <div className="text-center text-xs mt-2.5" style={{ color: "var(--muted)" }}>
           Acme Knowledge Assistant can make mistakes. Always verify important information.
         </div>
       </div>
