@@ -12,3 +12,5 @@ langfuse_cache/
 frontend/.env
 frontend/node_modules/
 frontend/dist/
+
+eval/reports/
