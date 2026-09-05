@@ -1,20 +1,19 @@
 """
-Runs a set of queries with KNOWN relevant and irrelevant expected matches
-against the reranker, prints scores, so you can pick a real threshold
-instead of guessing. Run after ingestion.
-
-Usage: python scripts\calibrate_threshold.py
+Runs known relevant/irrelevant queries through the reranker so you can
+pick a real threshold. Deliberately biased toward permissive: since the
+LLM + system prompt is the second, smarter line of defense against
+irrelevant context, this threshold only needs to reject clear garbage —
+not make the final call. Run after ingestion.
 """
 from app.retrieval.hybrid_search import hybrid_search
 
-# (query, should_match) pairs — should_match=True means we expect a
-# genuinely relevant chunk to come back; False means the query has
-# nothing to do with the KB and SHOULD score low.
 CASES = [
     ("What is the PTO carryover policy?", True),
     ("How do I roll back a bad deployment?", True),
     ("What are the pricing tiers?", True),
     ("Do students get a discount?", True),
+    ("What is the remote work policy?", True),
+    ("What is the incident response process for SEV1?", True),
     ("What is the CEO's favorite color?", False),
     ("What's the weather like today?", False),
     ("Write me a poem about the ocean", False),
@@ -23,27 +22,29 @@ CASES = [
 
 
 def main():
-    relevant_scores = []
-    irrelevant_scores = []
+    relevant_scores, irrelevant_scores = [], []
 
     for query, should_match in CASES:
         results = hybrid_search(query, top_k_final=1)
         top_score = results[0]["rerank_score"] if results else float("-inf")
         label = "RELEVANT" if should_match else "IRRELEVANT"
         print(f"[{label:10}] score={top_score:7.3f}  query={query!r}")
+        (relevant_scores if should_match else irrelevant_scores).append(top_score)
 
-        if should_match:
-            relevant_scores.append(top_score)
-        else:
-            irrelevant_scores.append(top_score)
+    r_min, i_max = min(relevant_scores), max(irrelevant_scores)
+    print(f"\nRelevant queries   -> min={r_min:.3f}  max={max(relevant_scores):.3f}")
+    print(f"Irrelevant queries -> min={min(irrelevant_scores):.3f}  max={i_max:.3f}")
 
-    print("\n--- Summary ---")
-    print(f"Relevant queries   -> min={min(relevant_scores):.3f}  max={max(relevant_scores):.3f}")
-    print(f"Irrelevant queries -> min={min(irrelevant_scores):.3f}  max={max(irrelevant_scores):.3f}")
+    if i_max >= r_min:
+        print("\n⚠️  Score distributions OVERLAP — no threshold perfectly separates them.")
+        print("   Biasing toward permissive: rely on the LLM's own 'I don't know' instruction")
+        print("   as the real filter, not this pre-filter.")
+        suggested = r_min - 0.5
+    else:
+        suggested = (r_min + i_max) / 2
 
-    suggested = (min(relevant_scores) + max(irrelevant_scores)) / 2
-    print(f"\nSuggested threshold (midpoint): {suggested:.3f}")
-    print("Set this as min_relevance_score in .env or app/config.py")
+    print(f"\nSuggested threshold: {suggested:.3f}  (never higher than weakest relevant score)")
+    print("Set MIN_RELEVANCE_SCORE in .env to this value.")
 
 
 if __name__ == "__main__":

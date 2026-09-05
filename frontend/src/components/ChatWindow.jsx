@@ -5,6 +5,7 @@ import Message from "./Message";
 import EmptyState from "./EmptyState";
 import WarningCard from "./WarningCard";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import SourceModal from "./SourceModal";
 import { useTheme } from "../context/ThemeContext";
 
 function fmtTime(iso) {
@@ -22,6 +23,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   const [title, setTitle] = useState("Acme Knowledge Assistant");
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [viewingSource, setViewingSource] = useState(null);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const bottomRef = useRef(null);
   const headerMenuRef = useRef(null);
@@ -141,11 +143,11 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
         {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} />}
 
         {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} />
+          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} onSourceClick={setViewingSource} />
         ))}
 
         {streamingText !== null && (
-          <Message role="assistant" content={streamingText} ts="" sources={streamingSources} streaming />
+          <Message role="assistant" content={streamingText} ts="" sources={streamingSources} streaming onSourceClick={setViewingSource} />
         )}
 
         {error && <WarningCard>{error}</WarningCard>}
@@ -218,6 +220,10 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
             onSessionsChanged();
           }}
         />
+      )}
+
+      {viewingSource && (
+        <SourceModal source={viewingSource} onClose={() => setViewingSource(null)} />
       )}
     </div>
   );

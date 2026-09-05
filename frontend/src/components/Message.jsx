@@ -1,7 +1,25 @@
 import { FileText } from "lucide-react";
 import SourceCards from "./SourceCards";
 
-export default function Message({ role, content, ts, sources, streaming }) {
+/**
+ * Escapes HTML first (XSS-safe), then converts a small, safe subset of
+ * markdown (bold, line breaks) to real HTML. Gemini's output regularly
+ * uses **bold** for emphasis — without this, users see literal asterisks.
+ */
+function formatContent(raw) {
+  const escaped = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return escaped
+    .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/^\* (.+)$/gm, "• $1")
+    .replace(/\n/g, "<br>");
+}
+
+export default function Message({ role, content, ts, sources, streaming, onSourceClick }) {
   if (role === "user") {
     return (
       <div className="flex justify-end items-start gap-2 my-3">
@@ -25,10 +43,12 @@ export default function Message({ role, content, ts, sources, streaming }) {
         <FileText size={16} style={{ color: "var(--accent)" }} />
       </div>
       <div className="max-w-[78%]">
-        <div className="text-sm leading-relaxed whitespace-pre-wrap">
-          {content}{streaming && <span className="animate-pulse">▌</span>}
-        </div>
-        <SourceCards sources={sources} />
+        <div
+          className="text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: formatContent(content) }}
+        />
+        {streaming && <span className="animate-pulse text-sm">▌</span>}
+        <SourceCards sources={sources} onSourceClick={onSourceClick} />
       </div>
       <span className="text-xs whitespace-nowrap pt-2" style={{ color: "var(--muted)" }}>{ts}</span>
     </div>

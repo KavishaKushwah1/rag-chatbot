@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 75
 
-    min_relevance_score: float = -2.0
+    min_relevance_score: float = -6.0
 
     langfuse_base_url: str = "https://cloud.langfuse.com"
 

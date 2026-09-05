@@ -36,7 +36,6 @@ async def chat(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     session_id = request.session_id or str(uuid.uuid4())
-    ensure_session(session_id, current_user.user_id)
 
     full_reply_parts: list[str] = []
 
@@ -82,6 +81,10 @@ async def chat(
 
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
             strong_results = sanitize_chunks(strong_results)
+            logger.info(
+                f"Retrieval: query={query!r} candidates={len(debug['fusion_candidates']) if langfuse else len(results)} "
+                f"top_scores={[round(r['rerank_score'], 2) for r in results[:3]]} threshold={MIN_RELEVANCE_SCORE}"
+            )
 
             if not strong_results and not history and not memories:
                 fallback = "I don't have enough information to answer that."
@@ -94,7 +97,12 @@ async def chat(
                 return
 
             sources_payload = [
-                {"source": r["source"], "doc_id": r["doc_id"], "rerank_score": r["rerank_score"]}
+                {
+                    "source": r["source"],
+                    "doc_id": r["doc_id"],
+                    "rerank_score": r["rerank_score"],
+                    "snippet": r["text"][:600],
+                }
                 for r in strong_results
             ]
             yield {"event": "sources", "data": json.dumps(sources_payload)}
@@ -132,6 +140,7 @@ async def chat(
 
             full_reply = "".join(full_reply_parts)
             if full_reply:
+                ensure_session(session_id, current_user.user_id)
                 save_message(session_id, current_user.user_id, "user", query)
                 save_message(session_id, current_user.user_id, "assistant", full_reply)
                 background_tasks.add_task(extract_and_store_memories, current_user.user_id, query, full_reply)

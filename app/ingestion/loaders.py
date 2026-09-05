@@ -18,14 +18,20 @@ class LoadedDocument:
     permission: str       # "public" | "hr" | "engineering" | ...
 
 
-# Filename -> permission tier. In a real system this would come from a DB
-# or a folder-structure convention; here we infer it from filename prefix
-# so the sample docs generator and loader stay in sync.
+# Filename prefix -> permission tier. Checked longest-prefix-first so
+# more specific prefixes win over shorter ones.
+_PREFIX_PERMISSIONS = {
+    "manager_": "manager",
+    "hr_": "hr",
+    "engineering_": "engineering",
+    "public_": "public",
+}
+
+
 def _infer_permission(filename: str) -> str:
-    if filename.startswith("hr_"):
-        return "hr"
-    if filename.startswith("engineering_"):
-        return "engineering"
+    for prefix in sorted(_PREFIX_PERMISSIONS, key=len, reverse=True):
+        if filename.startswith(prefix):
+            return _PREFIX_PERMISSIONS[prefix]
     return "public"
 
 
