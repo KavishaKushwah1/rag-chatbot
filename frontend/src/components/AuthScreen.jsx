@@ -3,6 +3,12 @@ import { Sun, Moon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 
+const ALLOWED_DOMAIN = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN;
+
+function isAllowedDomain(email) {
+  return email.toLowerCase().trim().endsWith(`@${ALLOWED_DOMAIN}`);
+}
+
 export default function AuthScreen() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -15,6 +21,10 @@ export default function AuthScreen() {
   async function handleLogin(e) {
     e.preventDefault();
     setError(""); setInfo("");
+    if (!isAllowedDomain(email)) {
+      setError(`Only @${ALLOWED_DOMAIN} email addresses can access this app.`);
+      return;
+    }
     const { error } = await signIn(email, password);
     if (error) setError(error.message);
   }
@@ -22,9 +32,13 @@ export default function AuthScreen() {
   async function handleSignup(e) {
     e.preventDefault();
     setError(""); setInfo("");
+    if (!isAllowedDomain(email)) {
+      setError(`Only @${ALLOWED_DOMAIN} email addresses can register.`);
+      return;
+    }
     const { error } = await signUp(email, password);
     if (error) setError(error.message);
-    else setInfo("Account created. You can now log in.");
+    else setInfo("Account created. Check your email (including spam) to confirm your address before logging in.");
   }
 
   return (
@@ -37,6 +51,9 @@ export default function AuthScreen() {
         <div className="text-3xl font-semibold tracking-tight">Acme</div>
         <div className="text-lg font-medium -mt-1">Knowledge Assistant</div>
         <div className="text-sm mt-2" style={{ color: "var(--muted)" }}>Your company knowledge, at your fingertips.</div>
+        <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+          Access restricted to @{import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN} accounts.
+        </div>
       </div>
 
       <div className="w-full max-w-sm rounded-xl border p-6" style={{ background: "var(--input-bg)", borderColor: "var(--surface-border)" }}>
