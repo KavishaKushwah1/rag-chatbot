@@ -19,7 +19,7 @@ function formatContent(raw) {
     .replace(/\n/g, "<br>");
 }
 
-export default function Message({ role, content, ts, sources, streaming, onSourceClick }) {
+export default function Message({ role, content, ts, sources, usedAttachments, streaming, onSourceClick }) {
   if (role === "user") {
     return (
       <div className="flex justify-end items-start gap-2 my-3">
@@ -49,6 +49,11 @@ export default function Message({ role, content, ts, sources, streaming, onSourc
         />
         {streaming && <span className="animate-pulse text-sm">▌</span>}
         <SourceCards sources={sources} onSourceClick={onSourceClick} />
+        {usedAttachments?.length > 0 && (
+          <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+            📎 Answered using: {usedAttachments.join(", ")}
+          </div>
+        )}
       </div>
       <span className="text-xs whitespace-nowrap pt-2" style={{ color: "var(--muted)" }}>{ts}</span>
     </div>

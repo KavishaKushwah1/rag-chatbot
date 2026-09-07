@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Paperclip, ArrowRight, MoreHorizontal, Sun, Moon, X, FileIcon } from "lucide-react";
-import { fetchSessionMessages, renameSession, streamChat } from "../api";
+import { extractAttachment, fetchSessionMessages, renameSession, streamChat } from "../api";
 import Message from "./Message";
 import EmptyState from "./EmptyState";
 import WarningCard from "./WarningCard";
@@ -53,22 +53,44 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
     if (!query) return;
     setInput("");
     setError(null);
+
     const userTs = fmtTime();
     setMessages((prev) => [...prev, { role: "user", content: query, ts: userTs }]);
 
+    let attachedContext = [];
+    if (attachedFiles.length > 0) {
+      try {
+        attachedContext = await Promise.all(
+          attachedFiles.map(async (file) => {
+            const result = await extractAttachment(token, file);
+            return { filename: result.filename, text: result.text };
+          })
+        );
+      } catch (err) {
+        setError(err.message);
+        return;
+      }
+    }
+    setAttachedFiles([]);
+
     let finalText = "";
     let finalSources = [];
+    let finalAttachments = [];
     setStreamingText("");
     setStreamingSources([]);
 
-    await streamChat(token, query, sessionId, {
+    await streamChat(token, query, sessionId, attachedContext, {
       onSession: (id) => { setSessionId(id); onSessionsChanged(); },
       onSources: (s) => { finalSources = s; setStreamingSources(s); },
+      onAttachments: (names) => { finalAttachments = names; },
       onToken: (t) => { finalText += t; setStreamingText(finalText); },
       onError: (msg) => setError(msg),
       onAuthError: () => onSignOutExpired(),
       onDone: () => {
-        setMessages((prev) => [...prev, { role: "assistant", content: finalText, ts: fmtTime(), sources: finalSources }]);
+        setMessages((prev) => [...prev, {
+          role: "assistant", content: finalText, ts: fmtTime(),
+          sources: finalSources, usedAttachments: finalAttachments,
+        }]);
         setStreamingText(null);
         setStreamingSources([]);
         onSessionsChanged();
@@ -143,7 +165,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
         {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} />}
 
         {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} onSourceClick={setViewingSource} />
+          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} />
         ))}
 
         {streamingText !== null && (
@@ -177,7 +199,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,.doc,.docx,.zip"
+          accept=".pdf,.docx,.txt,.md"
           onChange={handleFilesSelected}
           className="hidden"
         />

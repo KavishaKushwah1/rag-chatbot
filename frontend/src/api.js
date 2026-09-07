@@ -55,15 +55,30 @@ export async function deleteSession(token, sessionId) {
   return res.ok;
 }
 
+export async function extractAttachment(token, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${BASE}/attachments/extract`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to read ${file.name}`);
+  }
+  return res.json();
+}
+
 /**
  * Streams /chat via fetch + ReadableStream (EventSource can't send auth headers,
  * so we parse the SSE frames manually — same approach as the Python CLI clients).
  */
-export async function streamChat(token, query, sessionId, callbacks) {
+export async function streamChat(token, query, sessionId, attachedContext, callbacks) {
   const res = await fetch(`${BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ query, session_id: sessionId }),
+    body: JSON.stringify({ query, session_id: sessionId, attached_context: attachedContext }),
   });
 
   if (res.status === 401) return callbacks.onAuthError?.();
@@ -88,6 +103,7 @@ export async function streamChat(token, query, sessionId, callbacks) {
         const data = line.slice(5).trim();
         if (currentEvent === "session") callbacks.onSession?.(JSON.parse(data).session_id);
         else if (currentEvent === "sources") callbacks.onSources?.(JSON.parse(data));
+        else if (currentEvent === "attachments") callbacks.onAttachments?.(JSON.parse(data));
         else if (currentEvent === "token") callbacks.onToken?.(data);
         else if (currentEvent === "error") callbacks.onError?.(JSON.parse(data).message);
         else if (currentEvent === "done") callbacks.onDone?.();

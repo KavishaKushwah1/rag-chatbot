@@ -1,9 +1,9 @@
 """
-Lightweight checks on the user's own query. We don't block on these (a
-user is entitled to type "ignore instructions" as a literal question
-about prompt injection) — this is for logging/observability so we can
-see attempted misuse. Also enforces a basic length cap to prevent
-degenerate/abuse inputs from blowing up token costs.
+Blocks the query before it ever reaches retrieval or the LLM when it
+matches a data-exfiltration or instruction-override pattern. This is a
+hard stop, not a log-and-continue — unlike retrieved-document sanitizing
+(which quotes-and-flags), a user's own direct request to dump secrets
+gets refused outright.
 """
 from __future__ import annotations
 import logging
@@ -14,9 +14,20 @@ logger = logging.getLogger("uvicorn.error")
 
 MAX_QUERY_LENGTH = 2000
 
+REFUSAL_MESSAGE = (
+    "I can't help with requests to reveal credentials, API keys, passwords, "
+    "or other confidential access information."
+)
+
+
+class QueryBlockedError(ValueError):
+    """Raised when a query is refused outright, before touching retrieval/LLM."""
+    def __init__(self, message: str = REFUSAL_MESSAGE):
+        super().__init__(message)
+        self.message = message
+
 
 def validate_query(query: str) -> str:
-    """Returns the (possibly truncated) query. Raises ValueError if empty."""
     query = query.strip()
     if not query:
         raise ValueError("Query cannot be empty")
@@ -27,6 +38,7 @@ def validate_query(query: str) -> str:
 
     matches = detect_injection(query)
     if matches:
-        logger.info(f"User query contains injection-like phrasing (logged, not blocked): {matches}")
+        logger.warning(f"Blocked query matching injection/exfiltration patterns: {matches}")
+        raise QueryBlockedError()
 
     return query

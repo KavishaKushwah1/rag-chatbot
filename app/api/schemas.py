@@ -1,10 +1,16 @@
 from pydantic import BaseModel
 
 
+class AttachedContext(BaseModel):
+    filename: str
+    text: str
+
+
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
     session_id: str | None = None
+    attached_context: list[AttachedContext] | None = None
 
 
 class SourceOut(BaseModel):

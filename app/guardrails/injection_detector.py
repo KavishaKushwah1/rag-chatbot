@@ -26,6 +26,10 @@ INJECTION_PATTERNS = [
     r"\bDAN\b",  # common jailbreak alias ("Do Anything Now")
     r"respond only with",
     r"from now on",
+    r"reveal (any )?(confidential|private|sensitive) (credentials|information|data)",
+    r"(api key|password|access token|credentials?)s? (you (can|could) (retrieve|find|access)|stored|hidden)",
+    r"do not (hide|redact|censor) anything",
+    r"search all (available )?(company )?documents and (reveal|expose|return)",
 ]
 
 _COMPILED = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]

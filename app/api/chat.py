@@ -19,7 +19,7 @@ from app.llm.gemini_client import stream_completion
 from app.memory.short_term import ensure_session, get_recent_messages, save_message
 from app.memory.long_term import retrieve_memories
 from app.memory.extractor import extract_and_store_memories
-from app.guardrails.input_guard import validate_query
+from app.guardrails.input_guard import validate_query, QueryBlockedError
 from app.guardrails.sanitizer import sanitize_chunks
 from app.config import settings
 from app.observability.langfuse_client import is_enabled, get_langfuse
@@ -52,8 +52,17 @@ async def chat(
         )
         root_span = root_ctx.__enter__() if root_ctx else None
 
+        query = request.query
         try:
-            query = validate_query(request.query)
+            try:
+                query = validate_query(request.query)
+            except QueryBlockedError as e:
+                yield {"event": "sources", "data": json.dumps([])}
+                yield {"event": "token", "data": e.message}
+                full_reply_parts.append(e.message)
+                yield {"event": "done", "data": ""}
+                return
+
             yield {"event": "session", "data": json.dumps({"session_id": session_id})}
 
             history = get_recent_messages(session_id)
@@ -81,12 +90,13 @@ async def chat(
 
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
             strong_results = sanitize_chunks(strong_results)
+            has_attachments = bool(request.attached_context)
             logger.info(
                 f"Retrieval: query={query!r} candidates={len(debug['fusion_candidates']) if langfuse else len(results)} "
                 f"top_scores={[round(r['rerank_score'], 2) for r in results[:3]]} threshold={MIN_RELEVANCE_SCORE}"
             )
 
-            if not strong_results and not history and not memories:
+            if not strong_results and not history and not memories and not has_attachments:
                 fallback = "I don't have enough information to answer that."
                 yield {"event": "sources", "data": json.dumps([])}
                 yield {"event": "token", "data": fallback}
@@ -106,8 +116,16 @@ async def chat(
                 for r in strong_results
             ]
             yield {"event": "sources", "data": json.dumps(sources_payload)}
+            if has_attachments:
+                yield {
+                    "event": "attachments",
+                    "data": json.dumps([a.filename for a in request.attached_context]),
+                }
 
-            messages = build_messages(query, strong_results, history=history, memories=memories)
+            messages = build_messages(
+                query, strong_results, history=history, memories=memories,
+                attachments=[a.dict() for a in (request.attached_context or [])],
+            )
 
             if langfuse:
                 with langfuse.start_as_current_observation(
