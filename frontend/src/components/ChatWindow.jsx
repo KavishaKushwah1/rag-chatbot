@@ -8,6 +8,16 @@ import DeleteConfirmModal from "./DeleteConfirmModal";
 import SourceModal from "./SourceModal";
 import { useTheme } from "../context/ThemeContext";
 
+const SUBTEXTS = [
+  "Ask about HR policies, engineering docs, product plans, or anything else at Acme.",
+  "Every answer is grounded in a cited source document.",
+  "Pick up where you left off, or start something new.",
+];
+
+function pickSubtext() {
+  return SUBTEXTS[Math.floor(Math.random() * SUBTEXTS.length)];
+}
+
 function fmtTime(iso) {
   const d = iso ? new Date(iso) : new Date();
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -21,6 +31,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   const [streamingSources, setStreamingSources] = useState([]);
   const [error, setError] = useState(null);
   const [title, setTitle] = useState("Acme Knowledge Assistant");
+  const [greetingSubtext, setGreetingSubtext] = useState(pickSubtext);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewingSource, setViewingSource] = useState(null);
@@ -30,7 +41,12 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (!sessionId) { setMessages([]); setTitle("Acme Knowledge Assistant"); return; }
+    if (!sessionId) {
+      setMessages([]);
+      setTitle("Acme Knowledge Assistant");
+      setGreetingSubtext(pickSubtext());
+      return;
+    }
     fetchSessionMessages(token, sessionId).then((raw) => {
       setMessages(raw.map((m) => ({ role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: [] })));
     });
@@ -162,7 +178,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       </div>
 
       <div className="flex-1 overflow-y-auto px-6">
-        {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} />}
+        {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} subtext={greetingSubtext} />}
 
         {messages.map((m, i) => (
           <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} />

@@ -34,9 +34,9 @@ export default function SettingsModal({ me, token, onClose, onSaved }) {
           >
             {letter}
           </div>
-          <div className="text-xs" style={{ color: "var(--muted)" }}>
-            Generated from your display name.<br />Updates automatically when you change it below.
-          </div>
+          <button className="text-sm border rounded-lg px-3 py-1.5" style={{ borderColor: "var(--surface-border)" }}>
+            Change avatar
+          </button>
         </div>
 
         <label className="text-sm font-medium">Display name</label>
