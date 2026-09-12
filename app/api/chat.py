@@ -2,8 +2,15 @@
 POST /chat — retrieves context + memory, streams the LLM's grounded
 answer as SSE, persists the exchange, and schedules background long-term
 memory extraction (runs after the response completes, zero added latency).
+
+Retrieval and generation are run via a background thread bridge
+(asyncio.to_thread / iterate_in_thread) rather than called directly, so a
+slow request doesn't block the event loop and stall every other
+concurrent user's request — see app/llm/async_bridge.py for why this
+matters and how it was verified.
 """
 from __future__ import annotations
+import asyncio
 import json
 import logging
 import uuid
@@ -16,6 +23,7 @@ from app.auth.dependencies import get_current_user, CurrentUser
 from app.retrieval.hybrid_search import hybrid_search
 from app.retrieval.prompt_builder import build_messages
 from app.llm.gemini_client import stream_completion
+from app.llm.async_bridge import iterate_in_thread
 from app.memory.short_term import ensure_session, get_recent_messages, save_message
 from app.memory.long_term import retrieve_memories
 from app.memory.extractor import extract_and_store_memories
@@ -28,6 +36,7 @@ router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
 
 MIN_RELEVANCE_SCORE = settings.min_relevance_score
+
 
 @router.post("/chat")
 async def chat(
@@ -53,6 +62,7 @@ async def chat(
         root_span = root_ctx.__enter__() if root_ctx else None
 
         query = request.query
+        sources_payload: list[dict] = []
         try:
             try:
                 query = validate_query(request.query)
@@ -72,8 +82,8 @@ async def chat(
                 with langfuse.start_as_current_observation(
                     as_type="span", name="retrieval", input={"query": query, "permissions": current_user.permissions}
                 ) as retrieval_span:
-                    debug = hybrid_search(
-                        query=query, top_k_final=request.top_k,
+                    debug = await asyncio.to_thread(
+                        hybrid_search, query=query, top_k_final=request.top_k,
                         permission_filter=current_user.permissions, return_debug=True,
                     )
                     results = debug["reranked"]
@@ -84,15 +94,16 @@ async def chat(
                         }
                     )
             else:
-                results = hybrid_search(
-                    query=query, top_k_final=request.top_k, permission_filter=current_user.permissions,
+                results = await asyncio.to_thread(
+                    hybrid_search, query=query, top_k_final=request.top_k,
+                    permission_filter=current_user.permissions,
                 )
 
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
             strong_results = sanitize_chunks(strong_results)
             has_attachments = bool(request.attached_context)
             logger.info(
-                f"Retrieval: query={query!r} candidates={len(debug['fusion_candidates']) if langfuse else len(results)} "
+                f"Retrieval: query={query!r} candidates={len(results)} "
                 f"top_scores={[round(r['rerank_score'], 2) for r in results[:3]]} threshold={MIN_RELEVANCE_SCORE}"
             )
 
@@ -131,12 +142,12 @@ async def chat(
                 with langfuse.start_as_current_observation(
                     as_type="generation", name="generation", model="gemini-3.6-flash", input=messages
                 ) as gen_span:
-                    for token in stream_completion(messages):
+                    async for token in iterate_in_thread(stream_completion, messages):
                         full_reply_parts.append(token)
                         yield {"event": "token", "data": token}
                     gen_span.update(output="".join(full_reply_parts))
             else:
-                for token in stream_completion(messages):
+                async for token in iterate_in_thread(stream_completion, messages):
                     full_reply_parts.append(token)
                     yield {"event": "token", "data": token}
 
@@ -160,7 +171,10 @@ async def chat(
             if full_reply:
                 ensure_session(session_id, current_user.user_id)
                 save_message(session_id, current_user.user_id, "user", query)
-                save_message(session_id, current_user.user_id, "assistant", full_reply)
+                save_message(
+                    session_id, current_user.user_id, "assistant", full_reply,
+                    sources=sources_payload,
+                )
                 background_tasks.add_task(extract_and_store_memories, current_user.user_id, query, full_reply)
 
     return EventSourceResponse(event_generator(), background=background_tasks)

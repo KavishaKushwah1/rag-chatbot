@@ -1,7 +1,8 @@
 """
-Thin wrapper around Gemini 2.5 Flash with streaming.
-Keeps the same interface as groq_client.stream_completion() so the rest
-of the app (prompt_builder, chat.py) doesn't need to change.
+Thin wrapper around Gemini (currently gemini-3.6-flash) with streaming.
+Exposes stream_completion(messages) -> Iterator[str] as a stable
+interface, so the LLM provider can be swapped behind chat.py/prompt_builder
+without touching the rest of the app.
 """
 from __future__ import annotations
 from collections.abc import Iterator

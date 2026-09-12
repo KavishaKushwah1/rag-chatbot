@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class AttachedContext(BaseModel):
@@ -11,6 +11,13 @@ class ChatRequest(BaseModel):
     top_k: int = 5
     session_id: str | None = None
     attached_context: list[AttachedContext] | None = None
+
+    @field_validator("query")
+    @classmethod
+    def query_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Query cannot be empty")
+        return v
 
 
 class SourceOut(BaseModel):

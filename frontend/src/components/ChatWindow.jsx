@@ -48,7 +48,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       return;
     }
     fetchSessionMessages(token, sessionId).then((raw) => {
-      setMessages(raw.map((m) => ({ role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: [] })));
+      setMessages(raw.map((m) => ({ role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: m.sources || [] })));
     });
   }, [sessionId]);
 

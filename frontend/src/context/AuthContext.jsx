@@ -8,22 +8,28 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
+      if (isMounted) {
+        setSession(data.session);
+        setLoading(false);
+      }
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
-    return () => listener.subscription.unsubscribe();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      if (isMounted) setSession(s);
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
   const signUp = (email, password) => supabase.auth.signUp({ email, password });
   const signOut = () => supabase.auth.signOut();
-  const signInWithGoogle = () =>
-    supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
 
   return (
     <AuthContext.Provider
@@ -35,7 +41,6 @@ export function AuthProvider({ children }) {
         signIn,
         signUp,
         signOut,
-        signInWithGoogle,
       }}
     >
       {children}

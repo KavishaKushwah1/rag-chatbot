@@ -75,7 +75,7 @@ def get_session_messages(session_id: str, current_user: CurrentUser = Depends(ge
 
     messages_result = (
         client.table("chat_messages")
-        .select("role, content, created_at")
+        .select("role, content, created_at, sources")
         .eq("session_id", session_id)
         .order("created_at", desc=False)
         .execute()
