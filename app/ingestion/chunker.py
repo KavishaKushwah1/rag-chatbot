@@ -17,7 +17,7 @@ class Chunk:
     chunk_id: str
     doc_id: str
     source: str
-    permission: str
+    permission: list[str]
     chunk_index: int
     text: str
 
@@ -36,7 +36,7 @@ def chunk_text(
     text: str,
     doc_id: str,
     source: str,
-    permission: str,
+    permission: list[str],
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
 ) -> list[Chunk]:

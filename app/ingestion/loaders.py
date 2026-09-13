@@ -15,7 +15,7 @@ class LoadedDocument:
     doc_id: str          # stable id, e.g. filename without extension
     source: str           # original filename
     text: str
-    permission: str       # "public" | "hr" | "engineering" | ...
+    permission: list[str] # "public" | "hr" | "engineering" | ...
 
 
 # Filename prefix -> permission tier. Checked longest-prefix-first so
@@ -28,11 +28,11 @@ _PREFIX_PERMISSIONS = {
 }
 
 
-def _infer_permission(filename: str) -> str:
+def _infer_permission(filename: str) -> list[str]:
     for prefix in sorted(_PREFIX_PERMISSIONS, key=len, reverse=True):
         if filename.startswith(prefix):
-            return _PREFIX_PERMISSIONS[prefix]
-    return "public"
+            return [_PREFIX_PERMISSIONS[prefix]]
+    return ["public"]
 
 
 def _load_pdf(path: str) -> str:

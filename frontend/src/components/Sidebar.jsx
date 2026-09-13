@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, Settings, LogOut } from "lucide-react";
+import { Plus, Settings, LogOut, Shield } from "lucide-react";
 import { fetchSessions } from "../api";
 import SessionRow from "./SessionRow";
 import { useTheme } from "../context/ThemeContext";
@@ -8,7 +8,7 @@ import logoLight from "../assets/logo-light.png";
 
 export default function Sidebar({
   token, currentSessionId, onNewChat, onOpenSession, onDeleteRequest,
-  me, refreshKey, onSignOut, onOpenSettings,
+  me, refreshKey, onSignOut, onOpenSettings, onOpenAdmin,
 }) {
   const { theme } = useTheme();
   const [sessions, setSessions] = useState([]);
@@ -121,6 +121,14 @@ export default function Sidebar({
             className="absolute left-0 bottom-full mb-2 w-full rounded-xl border shadow-md p-1.5 text-sm z-20"
             style={{ background: "var(--input-bg)", borderColor: "var(--surface-border)" }}
           >
+            {me?.department === "admin" && (
+              <button
+                onClick={() => { setMenuOpen(false); onOpenAdmin(); }}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors hover:bg-[var(--accent-soft)]"
+              >
+                <Shield size={15} style={{ color: "var(--muted)" }} /> Admin Panel
+              </button>
+            )}
             <button
               onClick={() => { setMenuOpen(false); onOpenSettings(); }}
               className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-colors hover:bg-[var(--accent-soft)]"

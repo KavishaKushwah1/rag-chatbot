@@ -7,7 +7,7 @@ any client-supplied permission list.
 from __future__ import annotations
 from dataclasses import dataclass
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 
 from app.auth.supabase_client import get_anon_client, get_service_client
 from app.auth.permissions import permissions_for_department
@@ -53,3 +53,8 @@ def get_current_user(authorization: str = Header(...)) -> CurrentUser:
         department=department,
         permissions=permissions_for_department(department),
     )
+
+def require_admin(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if current_user.department != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user

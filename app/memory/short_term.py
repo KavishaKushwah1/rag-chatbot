@@ -32,14 +32,21 @@ def get_recent_messages(session_id: str, limit: int = MAX_HISTORY_TURNS * 2) -> 
     return [{"role": r["role"], "content": r["content"]} for r in rows]
 
 
-def save_message(session_id: str, user_id: str, role: str, content: str, sources: list[dict] | None = None) -> None:
+def save_message(
+    session_id: str, user_id: str, role: str, content: str,
+    sources: list[dict] | None = None, unanswered: bool = False,
+    related_query: str | None = None,
+) -> dict | None:
     client = get_service_client()
-    client.table("chat_messages").insert(
+    result = client.table("chat_messages").insert(
         {
             "session_id": session_id,
             "user_id": user_id,
             "role": role,
             "content": content,
             "sources": sources or [],
+            "unanswered": unanswered,
+            "related_query": related_query,
         }
     ).execute()
+    return result.data[0] if result.data else None

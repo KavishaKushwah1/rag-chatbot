@@ -63,6 +63,7 @@ async def chat(
 
         query = request.query
         sources_payload: list[dict] = []
+        is_unanswered = False
         try:
             try:
                 query = validate_query(request.query)
@@ -109,6 +110,7 @@ async def chat(
 
             if not strong_results and not history and not memories and not has_attachments:
                 fallback = "I don't have enough information to answer that."
+                is_unanswered = True
                 yield {"event": "sources", "data": json.dumps([])}
                 yield {"event": "token", "data": fallback}
                 full_reply_parts.append(fallback)
@@ -171,10 +173,13 @@ async def chat(
             if full_reply:
                 ensure_session(session_id, current_user.user_id)
                 save_message(session_id, current_user.user_id, "user", query)
-                save_message(
+                assistant_row = save_message(
                     session_id, current_user.user_id, "assistant", full_reply,
-                    sources=sources_payload,
+                    sources=sources_payload, unanswered=is_unanswered,
+                    related_query=query if is_unanswered else None,
                 )
+                if assistant_row:
+                    yield {"event": "message_id", "data": json.dumps({"message_id": assistant_row["id"]})}
                 background_tasks.add_task(extract_and_store_memories, current_user.user_id, query, full_reply)
 
     return EventSourceResponse(event_generator(), background=background_tasks)

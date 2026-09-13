@@ -78,7 +78,7 @@ export default function AuthScreen() {
             <label className="text-sm font-medium">Email</label>
             <input
               type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@acme.com"
+              placeholder="you@gmail.com"
               className="w-full mt-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
               style={{ background: "var(--input-bg)", borderColor: "var(--surface-border)", color: "var(--text)" }}
             />

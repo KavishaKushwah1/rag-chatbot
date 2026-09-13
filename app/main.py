@@ -6,6 +6,8 @@ from app.api.sessions import router as sessions_router
 from app.api.profile import router as profile_router
 from app.api.attachments import router as attachments_router
 from app.observability.langfuse_client import is_enabled, get_langfuse
+from app.api.admin import router as admin_router
+from app.api.feedback import router as feedback_router
 
 app = FastAPI(title="RAG Chatbot API")
 
@@ -20,7 +22,8 @@ app.include_router(chat_router)
 app.include_router(sessions_router)
 app.include_router(profile_router)
 app.include_router(attachments_router)
-
+app.include_router(admin_router)
+app.include_router(feedback_router)
 
 @app.on_event("startup")
 def warm_up_models():

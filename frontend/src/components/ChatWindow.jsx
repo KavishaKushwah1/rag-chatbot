@@ -39,6 +39,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
   const bottomRef = useRef(null);
   const headerMenuRef = useRef(null);
   const fileInputRef = useRef(null);
+  const skipNextFetchRef = useRef(false);
 
   useEffect(() => {
     if (!sessionId) {
@@ -47,8 +48,12 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       setGreetingSubtext(pickSubtext());
       return;
     }
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
     fetchSessionMessages(token, sessionId).then((raw) => {
-      setMessages(raw.map((m) => ({ role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: m.sources || [] })));
+      setMessages(raw.map((m) => ({ id: m.id, role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: m.sources || [] })));
     });
   }, [sessionId]);
 
@@ -92,11 +97,26 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
     let finalText = "";
     let finalSources = [];
     let finalAttachments = [];
+    let finalMessageId = null;
     setStreamingText("");
     setStreamingSources([]);
 
     await streamChat(token, query, sessionId, attachedContext, {
-      onSession: (id) => { setSessionId(id); onSessionsChanged(); },
+      onSession: (id) => {
+        if (!sessionId) {
+          skipNextFetchRef.current = true;
+        }
+        setSessionId(id);
+        onSessionsChanged();
+      },
+      onMessageId: (id) => {
+        finalMessageId = id;
+        setMessages((prev) => prev.map((message, index) => (
+          index === prev.length - 1 && message.role === "assistant"
+            ? { ...message, id }
+            : message
+        )));
+      },
       onSources: (s) => { finalSources = s; setStreamingSources(s); },
       onAttachments: (names) => { finalAttachments = names; },
       onToken: (t) => { finalText += t; setStreamingText(finalText); },
@@ -104,7 +124,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       onAuthError: () => onSignOutExpired(),
       onDone: () => {
         setMessages((prev) => [...prev, {
-          role: "assistant", content: finalText, ts: fmtTime(),
+          id: finalMessageId, role: "assistant", content: finalText, ts: fmtTime(),
           sources: finalSources, usedAttachments: finalAttachments,
         }]);
         setStreamingText(null);
@@ -181,7 +201,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
         {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} subtext={greetingSubtext} />}
 
         {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} />
+          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} messageId={m.id} token={token} />
         ))}
 
         {streamingText !== null && (

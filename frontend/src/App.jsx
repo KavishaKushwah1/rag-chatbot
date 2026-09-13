@@ -6,6 +6,7 @@ import ChatWindow from "./components/ChatWindow";
 import SettingsModal from "./components/SettingsModal";
 import DeleteConfirmModal from "./components/DeleteConfirmModal";
 import { fetchMe, deleteSession } from "./api";
+import AdminPanel from "./components/AdminPanel";
 
 export default function App() {
   const { session, loading, token, email, signOut } = useAuth();
@@ -13,6 +14,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function App() {
         refreshKey={refreshKey}
         onSignOut={signOut}
         onOpenSettings={() => setShowSettings(true)}
+        onOpenAdmin={() => setShowAdmin(true)}
       />
 
       <div className="flex-1">
@@ -55,6 +58,8 @@ export default function App() {
           onSaved={(name) => setMe((m) => ({ ...m, display_name: name }))}
         />
       )}
+
+      {showAdmin && <AdminPanel token={token} onClose={() => setShowAdmin(false)} />}
 
       {deleteTarget && (
         <DeleteConfirmModal

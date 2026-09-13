@@ -55,6 +55,15 @@ export async function deleteSession(token, sessionId) {
   return res.ok;
 }
 
+export async function submitFeedback(token, messageId, rating) {
+  const res = await authedFetch(`/messages/${messageId}/feedback`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating }),
+  });
+  return res.ok;
+}
+
 export async function extractAttachment(token, file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -102,6 +111,7 @@ export async function streamChat(token, query, sessionId, attachedContext, callb
       } else if (line.startsWith("data:")) {
         const data = line.slice(5).trim();
         if (currentEvent === "session") callbacks.onSession?.(JSON.parse(data).session_id);
+        else if (currentEvent === "message_id") callbacks.onMessageId?.(JSON.parse(data).message_id);
         else if (currentEvent === "sources") callbacks.onSources?.(JSON.parse(data));
         else if (currentEvent === "attachments") callbacks.onAttachments?.(JSON.parse(data));
         else if (currentEvent === "token") callbacks.onToken?.(data);

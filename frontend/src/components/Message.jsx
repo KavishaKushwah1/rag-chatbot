@@ -1,4 +1,5 @@
-import { FileText } from "lucide-react";
+import { FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { useState } from "react";
 import SourceCards from "./SourceCards";
 
 /**
@@ -6,7 +7,7 @@ import SourceCards from "./SourceCards";
  * markdown (bold, line breaks) to real HTML. Gemini's output regularly
  * uses **bold** for emphasis — without this, users see literal asterisks.
  */
-function formatContent(raw) {
+export function formatContent(raw) {
   const escaped = raw
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -19,7 +20,28 @@ function formatContent(raw) {
     .replace(/\n/g, "<br>");
 }
 
-export default function Message({ role, content, ts, sources, usedAttachments, streaming, onSourceClick }) {
+export default function Message({ role, content, ts, sources, usedAttachments, streaming, onSourceClick, messageId, token }) {
+  const [feedback, setFeedback] = useState(null);
+  const [feedbackStatus, setFeedbackStatus] = useState(null);
+
+  async function sendFeedback(rating) {
+    if (!messageId) return;
+    setFeedbackStatus("saving");
+    try {
+      const { submitFeedback } = await import("../api");
+      const ok = await submitFeedback(token, messageId, rating);
+      if (ok) {
+        setFeedback(rating);
+        setFeedbackStatus("saved");
+        setTimeout(() => setFeedbackStatus(null), 2000);
+      } else {
+        setFeedbackStatus("error");
+      }
+    } catch {
+      setFeedbackStatus("error");
+    }
+  }
+
   if (role === "user") {
     return (
       <div className="flex justify-end items-start gap-2 my-3">
@@ -49,6 +71,36 @@ export default function Message({ role, content, ts, sources, usedAttachments, s
         />
         {streaming && <span className="animate-pulse text-sm">▌</span>}
         <SourceCards sources={sources} onSourceClick={onSourceClick} />
+        {messageId && !streaming && (
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => sendFeedback("up")}
+              disabled={feedbackStatus === "saving"}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{
+                background: feedback === "up" ? "var(--accent-soft)" : "transparent",
+              }}
+            >
+              <ThumbsUp size={13} style={{ color: feedback === "up" ? "var(--accent)" : "var(--muted)" }} />
+            </button>
+            <button
+              onClick={() => sendFeedback("down")}
+              disabled={feedbackStatus === "saving"}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{
+                background: feedback === "down" ? "var(--accent-soft)" : "transparent",
+              }}
+            >
+              <ThumbsDown size={13} style={{ color: feedback === "down" ? "var(--accent)" : "var(--muted)" }} />
+            </button>
+            {feedbackStatus === "saved" && (
+              <span className="text-xs" style={{ color: "var(--muted)" }}>Thanks for the feedback</span>
+            )}
+            {feedbackStatus === "error" && (
+              <span className="text-xs text-red-500">Couldn't save — try again</span>
+            )}
+          </div>
+        )}
         {usedAttachments?.length > 0 && (
           <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>
             📎 Answered using: {usedAttachments.join(", ")}
