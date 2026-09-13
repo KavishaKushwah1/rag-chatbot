@@ -23,3 +23,5 @@ datasets==3.0.1
 langchain-google-genai==2.0.5
 
 langfuse==4.15.0
+
+slowapi==0.1.9

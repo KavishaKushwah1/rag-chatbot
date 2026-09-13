@@ -15,8 +15,9 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, Request
 from sse_starlette.sse import EventSourceResponse
+from google.genai.errors import ClientError
 
 from app.api.schemas import ChatRequest
 from app.auth.dependencies import get_current_user, CurrentUser
@@ -31,6 +32,7 @@ from app.guardrails.input_guard import validate_query, QueryBlockedError
 from app.guardrails.sanitizer import sanitize_chunks
 from app.config import settings
 from app.observability.langfuse_client import is_enabled, get_langfuse
+from app.rate_limit import limiter
 
 router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
@@ -39,12 +41,14 @@ MIN_RELEVANCE_SCORE = settings.min_relevance_score
 
 
 @router.post("/chat")
+@limiter.limit("10/minute")
 async def chat(
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = chat_request.session_id or str(uuid.uuid4())
 
     full_reply_parts: list[str] = []
 
@@ -54,19 +58,19 @@ async def chat(
             langfuse.start_as_current_observation(
                 as_type="span",
                 name="chat_request",
-                input=request.query,
+                input=chat_request.query,
                 metadata={"user_id": current_user.user_id, "session_id": session_id, "department": current_user.department},
             )
             if langfuse else None
         )
         root_span = root_ctx.__enter__() if root_ctx else None
 
-        query = request.query
+        query = chat_request.query
         sources_payload: list[dict] = []
         is_unanswered = False
         try:
             try:
-                query = validate_query(request.query)
+                query = validate_query(chat_request.query)
             except QueryBlockedError as e:
                 yield {"event": "sources", "data": json.dumps([])}
                 yield {"event": "token", "data": e.message}
@@ -84,7 +88,7 @@ async def chat(
                     as_type="span", name="retrieval", input={"query": query, "permissions": current_user.permissions}
                 ) as retrieval_span:
                     debug = await asyncio.to_thread(
-                        hybrid_search, query=query, top_k_final=request.top_k,
+                        hybrid_search, query=query, top_k_final=chat_request.top_k,
                         permission_filter=current_user.permissions, return_debug=True,
                     )
                     results = debug["reranked"]
@@ -96,13 +100,13 @@ async def chat(
                     )
             else:
                 results = await asyncio.to_thread(
-                    hybrid_search, query=query, top_k_final=request.top_k,
+                    hybrid_search, query=query, top_k_final=chat_request.top_k,
                     permission_filter=current_user.permissions,
                 )
 
             strong_results = [r for r in results if r["rerank_score"] >= MIN_RELEVANCE_SCORE]
             strong_results = sanitize_chunks(strong_results)
-            has_attachments = bool(request.attached_context)
+            has_attachments = bool(chat_request.attached_context)
             logger.info(
                 f"Retrieval: query={query!r} candidates={len(results)} "
                 f"top_scores={[round(r['rerank_score'], 2) for r in results[:3]]} threshold={MIN_RELEVANCE_SCORE}"
@@ -132,12 +136,12 @@ async def chat(
             if has_attachments:
                 yield {
                     "event": "attachments",
-                    "data": json.dumps([a.filename for a in request.attached_context]),
+                    "data": json.dumps([a.filename for a in chat_request.attached_context]),
                 }
 
             messages = build_messages(
                 query, strong_results, history=history, memories=memories,
-                attachments=[a.dict() for a in (request.attached_context or [])],
+                attachments=[a.dict() for a in (chat_request.attached_context or [])],
             )
 
             if langfuse:
@@ -157,9 +161,19 @@ async def chat(
             if root_span:
                 root_span.update(output="".join(full_reply_parts))
 
+        except ClientError as e:
+            logger.exception("Gemini API error during chat generation")
+            if "RESOURCE_EXHAUSTED" in str(e) or getattr(e, "code", None) == 429:
+                friendly = "The assistant has hit its usage limit for now. Please try again in a minute."
+            else:
+                friendly = "The assistant is temporarily unavailable. Please try again shortly."
+            yield {"event": "error", "data": json.dumps({"message": friendly})}
+            if root_span:
+                root_span.update(level="ERROR", status_message=str(e))
+
         except Exception as e:
             logger.exception("Error during chat generation")
-            yield {"event": "error", "data": json.dumps({"message": str(e)})}
+            yield {"event": "error", "data": json.dumps({"message": "Something went wrong while generating a response. Please try again."})}
             if root_span:
                 root_span.update(level="ERROR", status_message=str(e))
 

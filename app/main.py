@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.rate_limit import limiter
 
 from app.api.chat import router as chat_router
 from app.api.sessions import router as sessions_router
@@ -10,10 +13,12 @@ from app.api.admin import router as admin_router
 from app.api.feedback import router as feedback_router
 
 app = FastAPI(title="RAG Chatbot API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://your-frontend-domain.vercel.app", "http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

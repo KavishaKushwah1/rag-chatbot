@@ -53,7 +53,7 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       return;
     }
     fetchSessionMessages(token, sessionId).then((raw) => {
-      setMessages(raw.map((m) => ({ id: m.id, role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: m.sources || [] })));
+      setMessages(raw.map((m) => ({ messageId: m.id, role: m.role, content: m.content, ts: fmtTime(m.created_at), sources: m.sources || [] })));
     });
   }, [sessionId]);
 
@@ -69,14 +69,48 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
+  async function sendQuery(query, messagesBeforeThisTurn, attachedContext = []) {
+    const userTs = fmtTime();
+    setMessages([...messagesBeforeThisTurn, { role: "user", content: query, ts: userTs }]);
+    setError(null);
+
+    let finalText = "";
+    let finalSources = [];
+    let finalAttachments = [];
+    let finalMessageId = null;
+    setStreamingText("");
+    setStreamingSources([]);
+
+    await streamChat(token, query, sessionId, attachedContext, {
+      onSession: (id) => {
+        if (!sessionId) {
+          skipNextFetchRef.current = true;
+        }
+        setSessionId(id);
+        onSessionsChanged();
+      },
+      onMessageId: (id) => { finalMessageId = id; },
+      onSources: (s) => { finalSources = s; setStreamingSources(s); },
+      onAttachments: (names) => { finalAttachments = names; },
+      onToken: (t) => { finalText += t; setStreamingText(finalText); },
+      onError: (msg) => setError(msg),
+      onAuthError: () => onSignOutExpired(),
+      onDone: () => {
+        setMessages((prev) => [...prev, {
+          messageId: finalMessageId, role: "assistant", content: finalText, ts: fmtTime(),
+          sources: finalSources, usedAttachments: finalAttachments,
+        }]);
+        setStreamingText(null);
+        setStreamingSources([]);
+        onSessionsChanged();
+      },
+    });
+  }
+
   async function handleSend() {
     const query = input.trim();
     if (!query) return;
     setInput("");
-    setError(null);
-
-    const userTs = fmtTime();
-    setMessages((prev) => [...prev, { role: "user", content: query, ts: userTs }]);
 
     let attachedContext = [];
     if (attachedFiles.length > 0) {
@@ -94,44 +128,18 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
     }
     setAttachedFiles([]);
 
-    let finalText = "";
-    let finalSources = [];
-    let finalAttachments = [];
-    let finalMessageId = null;
-    setStreamingText("");
-    setStreamingSources([]);
+    await sendQuery(query, messages, attachedContext);
+  }
 
-    await streamChat(token, query, sessionId, attachedContext, {
-      onSession: (id) => {
-        if (!sessionId) {
-          skipNextFetchRef.current = true;
-        }
-        setSessionId(id);
-        onSessionsChanged();
-      },
-      onMessageId: (id) => {
-        finalMessageId = id;
-        setMessages((prev) => prev.map((message, index) => (
-          index === prev.length - 1 && message.role === "assistant"
-            ? { ...message, id }
-            : message
-        )));
-      },
-      onSources: (s) => { finalSources = s; setStreamingSources(s); },
-      onAttachments: (names) => { finalAttachments = names; },
-      onToken: (t) => { finalText += t; setStreamingText(finalText); },
-      onError: (msg) => setError(msg),
-      onAuthError: () => onSignOutExpired(),
-      onDone: () => {
-        setMessages((prev) => [...prev, {
-          id: finalMessageId, role: "assistant", content: finalText, ts: fmtTime(),
-          sources: finalSources, usedAttachments: finalAttachments,
-        }]);
-        setStreamingText(null);
-        setStreamingSources([]);
-        onSessionsChanged();
-      },
-    });
+  function handleEditMessage(index, newContent) {
+    const messagesBeforeThisTurn = messages.slice(0, index);
+    sendQuery(newContent, messagesBeforeThisTurn);
+  }
+
+  function handleRegenerate(index) {
+    const originalQuery = messages[index].content;
+    const messagesBeforeThisTurn = messages.slice(0, index);
+    sendQuery(originalQuery, messagesBeforeThisTurn);
   }
 
   async function handleRename(newTitle) {
@@ -200,9 +208,18 @@ export default function ChatWindow({ token, me, sessionId, setSessionId, onSessi
       <div className="flex-1 overflow-y-auto px-6">
         {messages.length === 0 && streamingText === null && <EmptyState displayName={me?.display_name} subtext={greetingSubtext} />}
 
-        {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources} usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} messageId={m.id} token={token} />
-        ))}
+        {messages.map((m, i) => {
+          const isLastUser = m.role === "user" && i === messages.length - 1;
+          return (
+            <Message
+              key={i} role={m.role} content={m.content} ts={m.ts} sources={m.sources}
+              usedAttachments={m.usedAttachments} onSourceClick={setViewingSource} messageId={m.messageId} token={token}
+              isLastUser={isLastUser}
+              onEdit={(newText) => handleEditMessage(i, newText)}
+              onRegenerate={() => handleRegenerate(i)}
+            />
+          );
+        })}
 
         {streamingText !== null && (
           <Message role="assistant" content={streamingText} ts="" sources={streamingSources} streaming onSourceClick={setViewingSource} />

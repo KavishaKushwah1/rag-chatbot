@@ -25,7 +25,9 @@ export default function AdminPanel({ token, onClose }) {
   }
 
   async function loadAll() {
-    setUsers((await authedGet("/admin/users")) || []);
+    const rawUsers = (await authedGet("/admin/users")) || [];
+    const deduped = Array.from(new Map(rawUsers.map((u) => [u.id, u])).values());
+    setUsers(deduped);
     setAudit((await authedGet("/admin/audit-log")) || []);
     setFeedback(await authedGet("/admin/feedback-summary"));
     setDocs((await authedGet("/admin/documents")) || []);
