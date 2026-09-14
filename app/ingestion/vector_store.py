@@ -57,8 +57,9 @@ def _ensure_permission_index(client: QdrantClient) -> None:
             field_name="permission",
             field_schema=PayloadSchemaType.KEYWORD,
         )
-    except Exception:
-        pass  # index likely already exists — safe to ignore
+        print("Index created successfully.")
+    except Exception as e:
+        print(f"Index creation raised: {type(e).__name__}: {e}")
 
 
 def ensure_collection(client: QdrantClient) -> None:
