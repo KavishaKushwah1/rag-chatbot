@@ -23,8 +23,7 @@ VECTOR_SIZE = 384  # matches BAAI/bge-small-en-v1.5
 
 
 def get_client() -> QdrantClient:
-    return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-
+    return QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key, port=443)
 
 def recreate_collection(client: QdrantClient) -> None:
     """Drops and recreates the collection with dense + sparse vector support."""
@@ -40,11 +39,32 @@ def recreate_collection(client: QdrantClient) -> None:
             "sparse": SparseVectorParams(),
         },
     )
+    _ensure_permission_index(client)
+
+
+def _ensure_permission_index(client: QdrantClient) -> None:
+    """
+    Qdrant Cloud requires an explicit payload index before filtering on a
+    field with MatchAny/FieldCondition — unlike local Docker Qdrant, which
+    allows unindexed filtering by default. Without this, every ACL-filtered
+    query fails with a 400 Bad Request.
+    """
+    from qdrant_client.models import PayloadSchemaType
+
+    try:
+        client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="permission",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+    except Exception:
+        pass  # index likely already exists — safe to ignore
 
 
 def ensure_collection(client: QdrantClient) -> None:
     if not client.collection_exists(COLLECTION_NAME):
         recreate_collection(client)
+    _ensure_permission_index(client)
 
 
 def upsert_chunks(client: QdrantClient, rows: list[tuple]) -> None:
