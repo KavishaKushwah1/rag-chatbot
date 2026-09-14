@@ -1,9 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
 :root {
   --bg: #FAFAF9; --surface: #F3F1EC; --surface-border: #E6E3DC;
   --text: #23252A; --muted: #7A7F8C; --accent: #5B6B8C;
