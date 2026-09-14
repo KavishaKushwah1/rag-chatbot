@@ -9,7 +9,7 @@ slow request doesn't block the event loop and stall every other
 concurrent user's request — see app/llm/async_bridge.py for why this
 matters and how it was verified.
 """
-from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -30,6 +30,7 @@ from app.memory.long_term import retrieve_memories
 from app.memory.extractor import extract_and_store_memories
 from app.guardrails.input_guard import validate_query, QueryBlockedError
 from app.guardrails.sanitizer import sanitize_chunks
+from app.guardrails.meta_questions import match_meta_question, is_meta_instruction_request
 from app.config import settings
 from app.observability.langfuse_client import is_enabled, get_langfuse
 from app.rate_limit import limiter
@@ -79,6 +80,42 @@ async def chat(
                 return
 
             yield {"event": "session", "data": json.dumps({"session_id": session_id})}
+
+            meta_response = match_meta_question(query)
+            if meta_response is not None:
+                yield {"event": "sources", "data": json.dumps([])}
+                yield {"event": "token", "data": meta_response}
+                full_reply_parts.append(meta_response)
+                yield {"event": "done", "data": ""}
+                if root_span:
+                    root_span.update(output=meta_response)
+                return
+
+            if is_meta_instruction_request(query):
+                # This is a request to design/write something, not a
+                # question about company documents — answer directly with
+                # no KB context injected, so retrieval keyword-matches
+                # against security/policy docs can't leak irrelevant
+                # company content into an unrelated meta-request.
+                meta_messages = [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant. The user is asking you to write, "
+                                   "design, or explain something general (like a prompt, system, "
+                                   "or architecture) — this is NOT a question about this company's "
+                                   "internal documents, so do not reference or invent any company "
+                                   "policy content. Just answer the request directly and helpfully.",
+                    },
+                    {"role": "user", "content": query},
+                ]
+                yield {"event": "sources", "data": json.dumps([])}
+                async for token in iterate_in_thread(stream_completion, meta_messages):
+                    full_reply_parts.append(token)
+                    yield {"event": "token", "data": token}
+                yield {"event": "done", "data": ""}
+                if root_span:
+                    root_span.update(output="".join(full_reply_parts))
+                return
 
             history = get_recent_messages(session_id)
             memories = retrieve_memories(current_user.user_id, query)
