@@ -3,6 +3,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 :root {
   --bg: #FAFAF9; --surface: #F3F1EC; --surface-border: #E6E3DC;
   --text: #23252A; --muted: #7A7F8C; --accent: #5B6B8C;
